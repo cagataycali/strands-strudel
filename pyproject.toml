@@ -1,0 +1,51 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "strands-strudel"
+version = "0.1.0"
+description = "🎵 AI-powered live coding music generation with Strudel patterns"
+readme = "README.md"
+license = "MIT"
+authors = [
+    { name = "DevDuck", email = "devduck@example.com" }
+]
+keywords = [
+    "strands",
+    "strudel",
+    "tidalcycles",
+    "livecoding",
+    "music",
+    "algorithmic",
+    "patterns"
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio",
+]
+requires-python = ">=3.10"
+dependencies = [
+    "strands-agents>=0.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "black",
+    "ruff",
+]
+
+[project.urls]
+Homepage = "https://github.com/cagataycali/strands-strudel"
+Documentation = "https://strudel.cc"
+Repository = "https://github.com/cagataycali/strands-strudel"
+
+[tool.hatch.build.targets.wheel]
+packages = ["strands_strudel"]

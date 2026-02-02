@@ -202,7 +202,7 @@ note("<[c3,e3,g3] [d3,f3,a3]>")
 - [Strudel REPL](https://strudel.cc) - Browser-based live coding
 - [Strudel Docs](https://strudel.cc/workshop/getting-started/) - Full documentation
 - [TidalCycles](https://tidalcycles.org) - The original Haskell version
-- [Strands Agents](https://github.com/strands-agents/strands-agents) - AI agent framework
+- [Strands Agents](https://github.com/strands-agents/sdk-python) - Strands Agents SDK
 
 ## License
 

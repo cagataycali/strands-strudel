@@ -16,7 +16,8 @@ from strands import tool
 # ═══════════════════════════════════════════════════════════════
 
 STRUDEL_WS_PORT = int(os.getenv("STRUDEL_WS_PORT", "9999"))
-TRACK_DIR = Path.cwd() / ".strands-strudel"
+STRUDEL_WS_HOST = os.getenv("STRUDEL_WS_HOST", "0.0.0.0")  # Expose to network for mobile
+TRACK_DIR = Path.home() / ".strands-strudel"
 
 # ═══════════════════════════════════════════════════════════════
 # WebSocket Server
@@ -26,6 +27,8 @@ _ws_server = None
 _ws_clients = set()
 _server_thread = None
 _event_loop = None
+_http_server = None
+_http_thread = None
 
 
 async def _handle_client(websocket):
@@ -66,8 +69,8 @@ async def _run_server(port: int):
         subprocess.check_call(["pip", "install", "websockets", "-q"])
         import websockets
     
-    _ws_server = await websockets.serve(_handle_client, "127.0.0.1", port)
-    print(f"🎵 WebSocket server: ws://127.0.0.1:{port}")
+    _ws_server = await websockets.serve(_handle_client, STRUDEL_WS_HOST, port)
+    print(f"🎵 WebSocket server: ws://{STRUDEL_WS_HOST}:{port}")
     await _ws_server.wait_closed()
 
 
@@ -109,6 +112,41 @@ def _send_to_players(code: str, action: str = "evaluate") -> int:
         return len(_ws_clients)
     except:
         return 0
+
+
+# ═══════════════════════════════════════════════════════════════
+# HTTP Server for Mobile Access
+# ═══════════════════════════════════════════════════════════════
+
+_http_server = None
+_http_thread = None
+
+
+def _start_http_server(html_content: str, port: int):
+    """Start a simple HTTP server to serve the player."""
+    global _http_server, _http_thread
+    
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+    
+    class PlayerHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(html_content.encode())
+        
+        def log_message(self, format, *args):
+            pass  # Suppress logs
+    
+    def run():
+        global _http_server
+        _http_server = HTTPServer(('0.0.0.0', port), PlayerHandler)
+        print(f"🌐 HTTP server: http://0.0.0.0:{port}")
+        _http_server.serve_forever()
+    
+    _http_thread = threading.Thread(target=run, daemon=True)
+    _http_thread.start()
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -231,118 +269,485 @@ stack(
 # ═══════════════════════════════════════════════════════════════
 
 def _get_player_html() -> str:
-    """Generate player HTML."""
+    """Generate player HTML with glass morphism and pattern timeline."""
+    # Get local IP for mobile access
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+    except:
+        local_ip = "localhost"
+    
     return f'''<!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>🎵 Strudel Player</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <title>🎵 Strudel DJ</title>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#000000">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎵</text></svg>">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    
     body {{
-      font-family: 'JetBrains Mono', monospace;
-      background: linear-gradient(135deg, #1a1a2e, #0f3460);
-      color: #e94560;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #000;
+      color: #fff;
       min-height: 100vh;
-      padding: 20px;
+      min-height: 100dvh;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+      -webkit-tap-highlight-color: transparent;
     }}
-    h1 {{ margin-bottom: 20px; }}
-    .status {{ display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }}
-    .dot {{
-      width: 12px; height: 12px;
+    
+    ::-webkit-scrollbar {{ width: 4px; }}
+    ::-webkit-scrollbar-thumb {{ background: rgba(255,255,255,0.15); border-radius: 2px; }}
+    
+    .app {{
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      min-height: 100dvh;
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    }}
+    
+    /* Header */
+    .header {{
+      padding: 16px 20px;
+      background: rgba(255,255,255,0.03);
+      backdrop-filter: blur(30px);
+      -webkit-backdrop-filter: blur(30px);
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }}
+    
+    .logo {{
+      font-size: 24px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }}
+    
+    .status {{
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+      font-size: 13px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.6);
+    }}
+    
+    .status-dot {{
+      width: 8px;
+      height: 8px;
       border-radius: 50%;
-      background: #ff6b6b;
+      background: rgba(255,255,255,0.3);
+      transition: all 0.3s;
     }}
-    .dot.ok {{ background: #51cf66; }}
-    .dot.play {{ background: #ffd43b; animation: pulse 0.5s infinite; }}
-    @keyframes pulse {{ 50% {{ opacity: 0.5; }} }}
-    pre {{
+    
+    .status-dot.connected {{ background: #4ade80; box-shadow: 0 0 12px #4ade80; }}
+    .status-dot.playing {{ background: #fbbf24; animation: pulse 1s infinite; box-shadow: 0 0 12px #fbbf24; }}
+    
+    @keyframes pulse {{ 0%, 100% {{ opacity: 1; }} 50% {{ opacity: 0.5; }} }}
+    
+    /* Now Playing Card */
+    .now-playing {{
+      margin: 20px;
+      padding: 24px;
+      background: rgba(255,255,255,0.04);
+      backdrop-filter: blur(30px);
+      -webkit-backdrop-filter: blur(30px);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 20px;
+      transition: all 0.3s;
+    }}
+    
+    .now-playing:hover {{
+      background: rgba(255,255,255,0.06);
+      border-color: rgba(255,255,255,0.15);
+    }}
+    
+    .section-title {{
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: rgba(255,255,255,0.4);
+      margin-bottom: 12px;
+    }}
+    
+    .code-display {{
       background: rgba(0,0,0,0.4);
-      padding: 20px;
+      border: 1px solid rgba(255,255,255,0.08);
       border-radius: 12px;
-      color: #ffd43b;
+      padding: 16px;
+      font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      color: #fbbf24;
+      max-height: 200px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }}
+    
+    /* Controls */
+    .controls {{
+      display: flex;
+      gap: 12px;
+      padding: 0 20px;
       margin-bottom: 20px;
-      min-height: 200px;
-      overflow: auto;
+    }}
+    
+    .btn {{
+      flex: 1;
+      padding: 16px 24px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06);
+      color: #fff;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }}
+    
+    .btn:hover {{ background: rgba(255,255,255,0.1); transform: translateY(-1px); }}
+    .btn:active {{ transform: scale(0.98); }}
+    .btn:disabled {{ opacity: 0.4; cursor: not-allowed; transform: none; }}
+    
+    .btn-primary {{
+      background: #fff;
+      color: #000;
+      border-color: #fff;
+    }}
+    
+    .btn-primary:hover {{ background: rgba(255,255,255,0.9); }}
+    .btn-primary.active {{ background: #4ade80; border-color: #4ade80; }}
+    
+    /* Timeline */
+    .timeline-section {{
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 0 20px 20px;
+      overflow: hidden;
+    }}
+    
+    .timeline-header {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }}
+    
+    .timeline-count {{
+      font-size: 13px;
+      color: rgba(255,255,255,0.4);
+      font-weight: 500;
+    }}
+    
+    .timeline {{
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding-bottom: 100px;
+    }}
+    
+    .timeline-item {{
+      padding: 16px;
+      background: rgba(255,255,255,0.03);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+    }}
+    
+    .timeline-item:hover {{
+      background: rgba(255,255,255,0.06);
+      border-color: rgba(255,255,255,0.12);
+      transform: translateX(4px);
+    }}
+    
+    .timeline-item.active {{
+      background: rgba(251,191,36,0.1);
+      border-color: rgba(251,191,36,0.3);
+    }}
+    
+    .timeline-item.active::before {{
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 3px;
+      height: 60%;
+      background: #fbbf24;
+      border-radius: 0 2px 2px 0;
+    }}
+    
+    .timeline-time {{
+      font-size: 11px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.35);
+      margin-bottom: 6px;
+      font-family: 'SF Mono', monospace;
+    }}
+    
+    .timeline-code {{
+      font-family: 'SF Mono', 'Monaco', monospace;
+      font-size: 12px;
+      color: rgba(255,255,255,0.7);
+      line-height: 1.5;
+      max-height: 60px;
+      overflow: hidden;
+      text-overflow: ellipsis;
       white-space: pre-wrap;
     }}
-    button {{
-      padding: 12px 24px;
-      border: 2px solid #e94560;
-      background: transparent;
-      color: #e94560;
-      font-family: inherit;
-      border-radius: 8px;
-      cursor: pointer;
-      margin-right: 10px;
-      margin-bottom: 10px;
+    
+    .timeline-item:hover .timeline-code {{
+      color: rgba(255,255,255,0.9);
     }}
-    button:hover, button.active {{ background: #e94560; color: #1a1a2e; }}
-    button:disabled {{ opacity: 0.5; cursor: not-allowed; }}
-    .log {{
-      margin-top: 20px;
+    
+    /* Mobile IP Banner */
+    .mobile-banner {{
+      margin: 0 20px 16px;
+      padding: 14px 16px;
+      background: rgba(74,222,128,0.1);
+      border: 1px solid rgba(74,222,128,0.2);
+      border-radius: 12px;
+      font-size: 13px;
+      color: rgba(255,255,255,0.8);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }}
+    
+    .mobile-banner code {{
       background: rgba(0,0,0,0.3);
-      padding: 10px;
-      border-radius: 8px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-family: 'SF Mono', monospace;
       font-size: 12px;
-      color: #888;
-      max-height: 150px;
-      overflow-y: auto;
+      color: #4ade80;
     }}
-    .loading {{ color: #ffd43b; }}
+    
+    /* Empty State */
+    .empty-state {{
+      text-align: center;
+      padding: 60px 20px;
+      color: rgba(255,255,255,0.3);
+    }}
+    
+    .empty-state-icon {{
+      font-size: 48px;
+      margin-bottom: 16px;
+      opacity: 0.5;
+    }}
+    
+    /* Loading overlay */
+    .loading-overlay {{
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.8);
+      backdrop-filter: blur(10px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      flex-direction: column;
+      gap: 16px;
+    }}
+    
+    .loading-overlay.active {{ display: flex; }}
+    
+    .spinner {{
+      width: 40px;
+      height: 40px;
+      border: 3px solid rgba(255,255,255,0.1);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }}
+    
+    @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+    
+    .loading-text {{
+      font-size: 14px;
+      color: rgba(255,255,255,0.6);
+    }}
   </style>
 </head>
 <body>
-  <h1>🎵 Strudel Player</h1>
-  <div class="status">
-    <div class="dot" id="dot"></div>
-    <span id="status">Connecting...</span>
+  <div class="app">
+    <header class="header">
+      <div class="logo">🎵 Strudel DJ</div>
+      <div class="status">
+        <div class="status-dot" id="statusDot"></div>
+        <span id="statusText">Connecting...</span>
+      </div>
+    </header>
+    
+    <div class="mobile-banner">
+      📱 Open on mobile:
+      <code>http://{local_ip}:{STRUDEL_WS_PORT + 1}</code>
+    </div>
+    
+    <div class="now-playing">
+      <div class="section-title">Now Playing</div>
+      <div class="code-display" id="currentCode">// Waiting for beats...
+// Start audio below, then patterns will appear here</div>
+    </div>
+    
+    <div class="controls">
+      <button class="btn btn-primary" id="startBtn">▶ Start Audio</button>
+      <button class="btn" id="stopBtn">⏹ Stop</button>
+    </div>
+    
+    <div class="timeline-section">
+      <div class="timeline-header">
+        <div class="section-title">Pattern History</div>
+        <div class="timeline-count" id="historyCount">0 patterns</div>
+      </div>
+      <div class="timeline" id="timeline">
+        <div class="empty-state">
+          <div class="empty-state-icon">🎹</div>
+          <div>Patterns will appear here as DJ plays</div>
+        </div>
+      </div>
+    </div>
   </div>
-  <pre id="code">// Waiting for patterns...
-// Click "Start Audio" first, then send patterns from Python:
-//   strudel(action="play", code='s("bd sd hh sd")')
-//   strudel(action="play", style="techno")</pre>
-  <div>
-    <button id="start">▶ Start Audio</button>
-    <button id="stop">⏹ Stop</button>
+  
+  <div class="loading-overlay" id="loadingOverlay">
+    <div class="spinner"></div>
+    <div class="loading-text" id="loadingText">Loading Strudel...</div>
   </div>
-  <div class="log" id="log"></div>
 
   <script type="module">
-    const WS = 'ws://127.0.0.1:{STRUDEL_WS_PORT}';
-    let ws, ready = false, pending = '';
+    const WS_URL = 'ws://' + window.location.hostname + ':{STRUDEL_WS_PORT}';
+    let ws, ready = false, history = [], currentIndex = -1;
     
     const $ = id => document.getElementById(id);
-    const log = (m, ok) => {{
-      const d = document.createElement('div');
-      d.className = ok === 'loading' ? 'loading' : '';
-      d.style.color = ok === true ? '#51cf66' : ok === false ? '#ff6b6b' : ok === 'loading' ? '#ffd43b' : '#888';
-      d.textContent = `[${{new Date().toLocaleTimeString()}}] ${{m}}`;
-      $('log').appendChild(d);
-      $('log').scrollTop = 9999;
-    }};
     
-    const setStatus = s => {{
-      $('dot').className = 'dot' + (s === 'ok' ? ' ok' : s === 'play' ? ' play' : '');
-      $('status').textContent = s === 'ok' ? 'Connected' : s === 'play' ? 'Playing' : 'Disconnected';
-    }};
+    function setStatus(status) {{
+      const dot = $('statusDot');
+      const text = $('statusText');
+      dot.className = 'status-dot' + (status === 'connected' ? ' connected' : status === 'playing' ? ' playing' : '');
+      text.textContent = status === 'connected' ? 'Ready' : status === 'playing' ? 'Playing' : 'Disconnected';
+    }}
     
-    // Initialize audio on user click
-    $('start').onclick = async () => {{
-      if (ready) return;
-      $('start').disabled = true;
-      $('start').textContent = '⏳ Loading...';
+    function showLoading(show, text) {{
+      $('loadingOverlay').classList.toggle('active', show);
+      if (text) $('loadingText').textContent = text;
+    }}
+    
+    function formatTime(date) {{
+      return date.toLocaleTimeString('en-US', {{ hour: '2-digit', minute: '2-digit', second: '2-digit' }});
+    }}
+    
+    function addToHistory(code) {{
+      const entry = {{ code, time: new Date(), id: Date.now() }};
+      history.unshift(entry);
+      currentIndex = 0;
+      renderTimeline();
+      $('currentCode').textContent = code;
+      $('historyCount').textContent = history.length + ' pattern' + (history.length !== 1 ? 's' : '');
+    }}
+    
+    function renderTimeline() {{
+      const timeline = $('timeline');
+      if (history.length === 0) {{
+        timeline.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🎹</div><div>Patterns will appear here as DJ plays</div></div>';
+        return;
+      }}
+      
+      timeline.innerHTML = history.map((entry, i) => `
+        <div class="timeline-item ${{i === currentIndex ? 'active' : ''}}" data-index="${{i}}">
+          <div class="timeline-time">${{formatTime(entry.time)}}</div>
+          <div class="timeline-code">${{entry.code.substring(0, 200)}}${{entry.code.length > 200 ? '...' : ''}}</div>
+        </div>
+      `).join('');
+      
+      // Add click handlers
+      timeline.querySelectorAll('.timeline-item').forEach(item => {{
+        item.addEventListener('click', () => {{
+          const idx = parseInt(item.dataset.index);
+          playFromHistory(idx);
+        }});
+      }});
+    }}
+    
+    async function playFromHistory(index) {{
+      if (!ready || index < 0 || index >= history.length) return;
+      
+      currentIndex = index;
+      const code = history[index].code;
+      $('currentCode').textContent = code;
+      renderTimeline();
       
       try {{
-        log('Loading Strudel from CDN...', 'loading');
+        await window.evaluate(code);
+        setStatus('playing');
+      }} catch (e) {{
+        console.error('Playback error:', e);
+      }}
+    }}
+    
+    async function play(code) {{
+      addToHistory(code);
+      
+      if (!ready) {{
+        console.log('Audio not ready');
+        return;
+      }}
+      
+      try {{
+        await window.evaluate(code);
+        setStatus('playing');
+        if (ws?.readyState === 1) ws.send(JSON.stringify({{type:'ack',status:'playing'}}));
+      }} catch (e) {{
+        console.error('Eval error:', e);
+        if (ws?.readyState === 1) ws.send(JSON.stringify({{type:'error',message:e.message}}));
+      }}
+    }}
+    
+    // Initialize audio
+    $('startBtn').onclick = async () => {{
+      if (ready) return;
+      
+      const btn = $('startBtn');
+      btn.disabled = true;
+      showLoading(true, 'Loading Strudel engine...');
+      
+      try {{
         const {{ initStrudel, evaluate: ev, hush: hu }} = await import('https://unpkg.com/@strudel/web@1.3.0/dist/index.mjs');
         
         window.evaluate = ev;
         window.hush = hu;
         
-        log('Loading samples (dirt-samples)...', 'loading');
+        showLoading(true, 'Loading samples...');
         
-        // Initialize with samples prebake
         await initStrudel({{
           prebake: async () => {{
             const {{ samples }} = await import('https://unpkg.com/@strudel/web@1.3.0/dist/index.mjs');
@@ -351,90 +756,60 @@ def _get_player_html() -> str:
         }});
         
         ready = true;
-        $('start').textContent = '✓ Ready';
-        $('start').classList.add('active');
-        log('Audio engine ready! Samples loaded.', true);
+        btn.textContent = '✓ Ready';
+        btn.classList.add('active');
+        setStatus('connected');
+        showLoading(false);
         
-        // Play pending code if any
-        if (pending) {{
-          log('Playing pending pattern...', 'loading');
-          play(pending);
+        // Play pending if any
+        if (history.length > 0) {{
+          playFromHistory(0);
         }}
       }} catch (e) {{
-        log('Init error: ' + e.message, false);
-        console.error(e);
-        $('start').disabled = false;
-        $('start').textContent = '▶ Retry';
+        console.error('Init error:', e);
+        btn.disabled = false;
+        btn.textContent = '▶ Retry';
+        showLoading(false);
       }}
     }};
     
-    $('stop').onclick = () => {{
+    $('stopBtn').onclick = () => {{
       if (window.hush) {{
         window.hush();
-        setStatus('ok');
-        log('Stopped playback');
+        setStatus('connected');
       }}
     }};
     
-    async function play(code) {{
-      pending = code;
-      $('code').textContent = code;
-      
-      if (!ready) {{
-        log('Audio not started - click "Start Audio" first', false);
-        return;
-      }}
-      
-      try {{
-        log('Evaluating pattern...', 'loading');
-        await window.evaluate(code);
-        setStatus('play');
-        log('Now playing!', true);
-        if (ws?.readyState === 1) ws.send(JSON.stringify({{type:'ack',status:'playing'}}));
-      }} catch (e) {{
-        log('Pattern error: ' + e.message, false);
-        console.error('Eval error:', e);
-        if (ws?.readyState === 1) ws.send(JSON.stringify({{type:'error',message:e.message}}));
-      }}
-    }}
-    
+    // WebSocket connection
     function connect() {{
-      log('Connecting to ' + WS);
-      ws = new WebSocket(WS);
+      console.log('Connecting to', WS_URL);
+      ws = new WebSocket(WS_URL);
       
       ws.onopen = () => {{
-        setStatus('ok');
-        log('Connected to Python server!', true);
-        ws.send(JSON.stringify({{type:'register',client:'strudel-player'}}));
+        setStatus(ready ? 'connected' : 'connected');
+        ws.send(JSON.stringify({{type:'register',client:'strudel-player-v2'}}));
       }};
       
       ws.onmessage = async e => {{
         try {{
           const d = JSON.parse(e.data);
           if (d.type === 'evaluate' || d.type === 'play') {{
-            log('Received pattern from Python');
             await play(d.code);
           }} else if (d.type === 'hush' || d.type === 'stop') {{
             if (window.hush) window.hush();
-            setStatus('ok');
-            log('Stopped by Python');
+            setStatus('connected');
           }}
         }} catch {{
-          // Raw code string
-          if (e.data.trim()) {{
-            log('Received raw pattern');
-            await play(e.data);
-          }}
+          if (e.data.trim()) await play(e.data);
         }}
       }};
       
       ws.onclose = () => {{
         setStatus('');
-        log('Disconnected from server');
         setTimeout(connect, 2000);
       }};
       
-      ws.onerror = () => log('WebSocket error', false);
+      ws.onerror = () => console.log('WebSocket error');
     }}
     
     connect();
@@ -710,13 +1085,13 @@ def strudel(
         strudel(action="play", style="techno")
         strudel(action="hush")
     """
-    global _ws_server
+    global _ws_server, _http_server, _http_thread
     
     try:
         # START
         if action == "start":
             if _ws_server:
-                return {"status": "success", "content": [{"text": f"🎵 Already running on ws://127.0.0.1:{STRUDEL_WS_PORT}\nPlayers: {len(_ws_clients)}"}]}
+                return {"status": "success", "content": [{"text": f"🎵 Already running on ws://0.0.0.0:{STRUDEL_WS_PORT}\nPlayers: {len(_ws_clients)}"}]}
             
             _start_server(STRUDEL_WS_PORT)
             
@@ -725,15 +1100,53 @@ def strudel(
             
             TRACK_DIR.mkdir(parents=True, exist_ok=True)
             player = TRACK_DIR / "player.html"
-            player.write_text(_get_player_html())
+            html_content = _get_player_html()
+            player.write_text(html_content)
+            
+            # Start HTTP server for mobile access
+            http_port = STRUDEL_WS_PORT + 1
+            if not _http_server:
+                from http.server import HTTPServer, BaseHTTPRequestHandler
+                
+                class PlayerHandler(BaseHTTPRequestHandler):
+                    def do_GET(self):
+                        self.send_response(200)
+                        self.send_header('Content-type', 'text/html')
+                        self.send_header('Access-Control-Allow-Origin', '*')
+                        self.end_headers()
+                        self.wfile.write(html_content.encode())
+                    
+                    def log_message(self, format, *args):
+                        pass
+                
+                def run_http():
+                    global _http_server
+                    _http_server = HTTPServer(('0.0.0.0', http_port), PlayerHandler)
+                    _http_server.serve_forever()
+                
+                _http_thread = threading.Thread(target=run_http, daemon=True)
+                _http_thread.start()
+            
+            # Get local IP for mobile
+            import socket
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.connect(("8.8.8.8", 80))
+                local_ip = s.getsockname()[0]
+                s.close()
+            except:
+                local_ip = "localhost"
             
             if open_browser:
-                webbrowser.open(f"file://{player}")
+                webbrowser.open(f"http://localhost:{http_port}")
             
             return {
                 "status": "success",
                 "content": [{
-                    "text": f"🎵 Server started!\n\nws://127.0.0.1:{STRUDEL_WS_PORT}\nPlayer: {player}\n\n"
+                    "text": f"🎵 Server started!\n\n"
+                           + f"📱 Mobile: http://{local_ip}:{http_port}\n"
+                           + f"💻 Local: http://localhost:{http_port}\n"
+                           + f"🔌 WebSocket: ws://0.0.0.0:{STRUDEL_WS_PORT}\n\n"
                            + ("✅ Opened in browser\n\n" if open_browser else "")
                            + "Now use: strudel(action='play', code='s(\"bd sd\")')"
                 }]
@@ -776,15 +1189,34 @@ def strudel(
                 _send_to_players("", "hush")
                 _event_loop.call_soon_threadsafe(_ws_server.close)
                 _ws_server = None
+            # Stop HTTP server too
+            if _http_server:
+                _http_server.shutdown()
+                _http_server = None
             return {"status": "success", "content": [{"text": "🎵 Server stopped"}]}
         
         # STATUS
         elif action == "status":
+            # Get local IP for mobile
+            import socket
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.connect(("8.8.8.8", 80))
+                local_ip = s.getsockname()[0]
+                s.close()
+            except:
+                local_ip = "localhost"
+            
+            http_port = STRUDEL_WS_PORT + 1
             return {
                 "status": "success",
                 "content": [{
-                    "text": f"🎵 Status\n\nServer: {'Running' if _ws_server else 'Stopped'}\n"
-                           f"Port: {STRUDEL_WS_PORT}\nPlayers: {len(_ws_clients)}"
+                    "text": f"🎵 Status\n\n"
+                           f"Server: {'Running' if _ws_server else 'Stopped'}\n"
+                           f"📱 Mobile: http://{local_ip}:{http_port}\n"
+                           f"💻 Local: http://localhost:{http_port}\n"
+                           f"🔌 WebSocket: ws://0.0.0.0:{STRUDEL_WS_PORT}\n"
+                           f"Players: {len(_ws_clients)}"
                 }]
             }
         
